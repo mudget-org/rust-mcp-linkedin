@@ -24,12 +24,23 @@ impl LinkedInClient {
                     LinkedInClientError::ConfigError("Failed to create auth header".to_string())
                 })?,
         );
+        
+        // Add content-type header
+        headers.insert(
+            header::CONTENT_TYPE, 
+            header::HeaderValue::from_static("application/json")
+        );
 
         let http_client = Client::builder()
             .default_headers(headers)
             .timeout(Duration::from_secs(30))
             .build()
             .map_err(|e| LinkedInClientError::HttpError(e))?;
+
+        info!("LinkedIn client created for person ID: {}", config.linkedin_person_id);
+        if config.debug_mode {
+            info!("LinkedIn client running in DEBUG mode - posts will be simulated");
+        }
 
         Ok(Self {
             http_client,
@@ -73,36 +84,41 @@ impl LinkedInClient {
             scheduledAt: schedule_time.map(|t| t.timestamp_millis()),
         };
 
-        let response = self
-            .http_client
-            .post(api_url)
-            .json(&payload)
-            .send()
-            .await
-            .map_err(|e| {
+        debug!("Sending request to LinkedIn API: {:?}", payload);
+        
+        // Make the API request with detailed logging
+        let response = match self.http_client.post(api_url).json(&payload).send().await {
+            Ok(resp) => resp,
+            Err(e) => {
                 error!("HTTP error calling LinkedIn API: {}", e);
-                LinkedInClientError::HttpError(e)
-            })?;
+                return Err(LinkedInClientError::HttpError(e));
+            }
+        };
 
-        if !response.status().is_success() {
+        let status = response.status();
+        
+        if !status.is_success() {
             let error_body = response
                 .text()
                 .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
 
-            error!("LinkedIn API error: {}", error_body);
-            return Err(LinkedInClientError::ApiError(error_body));
+            error!("LinkedIn API error ({}): {}", status, error_body);
+            return Err(LinkedInClientError::ApiError(format!("{}: {}", status, error_body)));
         }
 
-        let post_response = response.json::<PostResponse>().await.map_err(|e| {
-            error!("Error parsing LinkedIn API response: {}", e);
-            LinkedInClientError::HttpError(e)
-        })?;
+        debug!("LinkedIn API returned successful response");
+        
+        // Parse the response
+        let post_response = match response.json::<PostResponse>().await {
+            Ok(resp) => resp,
+            Err(e) => {
+                error!("Error parsing LinkedIn API response: {}", e);
+                return Err(LinkedInClientError::HttpError(e));
+            }
+        };
 
-        info!(
-            "Successfully created LinkedIn post with ID: {}",
-            post_response.id
-        );
+        info!("Successfully created LinkedIn post with ID: {}", post_response.id);
         Ok(post_response.id)
     }
 }

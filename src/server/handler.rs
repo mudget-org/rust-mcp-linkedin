@@ -1,17 +1,15 @@
 use crate::linkedin::client::LinkedInClient;
-use crate::mcp::models::LinkedInPostResponse;
 use crate::server::tools::LinkedInTools;
 use async_trait::async_trait;
 use rmcp::{
     ServerHandler,
-    error::Error as McpError,
     model::*,
     service::{Peer, RequestContext, RoleServer},
     tool,
     tool_box
 };
 use std::sync::Arc;
-use tracing::{debug, info};
+use tracing::{debug, error, info};
 
 #[derive(Clone)]
 pub struct LinkedInPostServer {
@@ -43,7 +41,7 @@ impl ServerHandler for LinkedInPostServer {
     async fn handle_request(
         &self,
         request: ClientRequest,
-        context: RequestContext<RoleServer>,
+        _context: RequestContext<RoleServer>,
     ) -> Result<ServerResult, McpError> {
         debug!("Received MCP request: {:?}", request);
 
@@ -68,27 +66,41 @@ impl ServerHandler for LinkedInPostServer {
 
                 match req.params.name.as_str() {
                     "create_post" => {
+                        info!(
+                            "Calling create_post tool with params: {:?}",
+                            req.params.parameters
+                        );
                         let result = self.tools.create_post(req.params.parameters).await;
 
                         match result {
-                            Ok(response) => Ok(ServerResult::CallToolResult(CallToolResult {
-                                contents: Contents::from_serializable(&response)?,
-                            })),
-                            Err(e) => Ok(ServerResult::CallToolResult(CallToolResult {
-                                contents: Contents::Error(ErrorContents {
-                                    code: "LINKEDIN_ERROR".to_string(),
-                                    message: e.0,
-                                    data: None,
-                                }),
-                            })),
+                            Ok(response) => {
+                                info!("Successfully created post, returning response");
+                                Ok(ServerResult::CallToolResult(CallToolResult {
+                                    contents: Contents::from_serializable(&response)?,
+                                }))
+                            }
+                            Err(e) => {
+                                error!("Error creating post: {}", e.0);
+                                Ok(ServerResult::CallToolResult(CallToolResult {
+                                    contents: Contents::Error(ErrorContents {
+                                        code: "LINKEDIN_ERROR".to_string(),
+                                        message: e.0,
+                                        data: None,
+                                    }),
+                                }))
+                            }
                         }
                     }
-                    _ => Err(McpError::method_not_found(&req.params.name)),
+                    _ => {
+                        error!("Method not found: {}", req.params.name);
+                        Err(McpError::method_not_found(&req.params.name))
+                    }
                 }
             }
             _ => {
                 // Handle other requests or return errors
-                Err(McpError::method_not_found("Unknown request type"))
+                error!("Unsupported request type");
+                Err(McpError::method_not_found("Unsupported request type"))
             }
         }
     }

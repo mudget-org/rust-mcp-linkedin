@@ -5,14 +5,11 @@ mod server;
 mod utils;
 
 use anyhow::Result;
-use axum::{Router, extract::State, response::Response, routing::get};
+use axum::response::IntoResponse;
 use config::Config;
-use rmcp::service::server::serve_http_sse;
-use std::net::SocketAddr;
+use rmcp::transport::sse_server::SseServer;
 use std::sync::Arc;
-use tower_http::cors::{Any, CorsLayer};
-use tower_http::trace::TraceLayer;
-use tracing::{Level, info};
+use tracing::info;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -21,39 +18,29 @@ async fn main() -> Result<()> {
 
     // Load configuration
     let config = Config::new()?;
+    info!("Configuration loaded successfully");
 
     // Create LinkedIn client
     let linkedin_client = linkedin::client::LinkedInClient::new(&config)?;
+    info!("LinkedIn client initialized");
 
     // Create server handler
     let linkedin_server = Arc::new(server::handler::LinkedInPostServer::new(linkedin_client));
+    info!("LinkedIn MCP server handler created");
 
-    // Configure CORS
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
+    // Create a closure that returns the linkedin_server
+    let server_factory = move || linkedin_server.clone();
 
-    // Build our application with routes
-    let app = Router::new()
-        .route("/", get(|| async { "LinkedIn MCP Server" }))
-        .route("/sse", get(handle_sse))
-        .with_state(linkedin_server)
-        .layer(TraceLayer::new_for_http())
-        .layer(cors);
+    let ct = SseServer::serve(config.server_address.parse()?)
+        .await?
+        .with_service(server_factory);
 
-    // Run the server
-    let addr: SocketAddr = config.server_address.parse()?;
-    info!("Starting LinkedIn MCP server on {}", addr);
-
-    // Use tokio's TcpListener for axum
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app).await?;
-
+    tokio::signal::ctrl_c().await?;
+    ct.cancel();
     Ok(())
 }
 
-// SSE handler based on the example in axum_router.rs
-async fn handle_sse(State(handler): State<Arc<server::handler::LinkedInPostServer>>) -> Response {
-    serve_http_sse(handler)
+// Health check endpoint
+async fn health_check() -> impl IntoResponse {
+    "LinkedIn MCP Server - Status: Running"
 }
