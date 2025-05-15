@@ -1,0 +1,48 @@
+{
+  "schema_version": "v1",
+  "name_for_model": "linkedin_post",
+  "name_for_human": "LinkedIn Post Creator",
+  "description_for_model": "Use this tool to create LinkedIn posts, optionally with scheduling. Supply content and optional schedule time in ISO 8601 format.",
+  "description_for_human": "Create and schedule posts on LinkedIn",
+  "auth": {
+    "type": "none"
+  },
+  "api": {
+    "type": "sse",
+    "url": "http://localhost:3000/sse"
+  },
+  "tool_definition": {
+    "inputs_schema": {
+      "type": "object",
+      "properties": {
+        "content": {
+          "type": "string",
+          "description": "The text content for the LinkedIn post"
+        },
+        "schedule_time": {
+          "type": "string",
+          "description": "Optional ISO 8601 timestamp for scheduling the post",
+          "format": "date-time"
+        }
+      },
+      "required": ["content"]
+    },
+    "outputs_schema": {
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean",
+          "description": "Whether the post was successfully created"
+        },
+        "post_id": {
+          "type": "string",
+          "description": "The ID of the created LinkedIn post if successful"
+        },
+        "message": {
+          "type": "string",
+          "description": "A message describing the result of the operation"
+        }
+      }
+    }
+  }
+}
