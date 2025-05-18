@@ -66,7 +66,7 @@ COPY --from=build /bin/server /bin/
 COPY tool-manifest.json /bin/
 
 # Expose the port that the application listens on.
-EXPOSE 3000
+EXPOSE 3500
 
 # What the container should run when it is started.
 CMD ["/bin/server"]

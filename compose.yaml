@@ -4,13 +4,13 @@ services:
   mcp-server:
     build: .
     ports:
-      - "3000:3000"
+      - "3500:3500"
     volumes:
       - ./.env:/bin/.env
       - ./tool-manifest.json:/bin/tool-manifest.json
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      test: ["CMD", "curl", "-f", "http://localhost:3500"]
       interval: 30s
       timeout: 10s
       retries: 3

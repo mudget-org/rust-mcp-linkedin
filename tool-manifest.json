@@ -9,7 +9,7 @@
   },
   "api": {
     "type": "sse",
-    "url": "http://localhost:3000/sse"
+    "url": "http://localhost:3500/sse"
   },
   "tool_definition": {
     "inputs_schema": {

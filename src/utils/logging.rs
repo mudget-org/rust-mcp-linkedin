@@ -15,7 +15,11 @@ pub fn init_logging() -> Result<()> {
         _ => Level::INFO,
     };
 
-    let subscriber = FmtSubscriber::builder().with_max_level(level).finish();
+    let subscriber = FmtSubscriber::builder()
+        .with_max_level(level)
+        .with_writer(std::io::stderr)
+        .with_ansi(false)
+        .finish();
 
     tracing::subscriber::set_global_default(subscriber)?;
 

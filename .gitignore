@@ -1,3 +1,5 @@
 /target
 !.env.example
 .env
+
+run_linkedin_server.sh

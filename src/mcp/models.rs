@@ -1,7 +1,7 @@
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use schemars::JsonSchema;
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct LinkedInPostRequest {
     /// The text content for the LinkedIn post
     #[schemars(description = "The text content for the LinkedIn post")]
@@ -12,7 +12,7 @@ pub struct LinkedInPostRequest {
     pub schedule_time: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct LinkedInPostResponse {
     /// Whether the post was successfully created
     pub success: bool,

@@ -1,27 +1,71 @@
 use crate::linkedin::client::LinkedInClient;
-use crate::server::tools::LinkedInTools;
+use crate::mcp::models::LinkedInPostRequest;
 use async_trait::async_trait;
-use rmcp::{
-    ServerHandler,
-    model::*,
-    service::{Peer, RequestContext, RoleServer},
-    tool,
-    tool_box
-};
+use rmcp::{ServerHandler, model::*, service::{Peer, RoleServer}, tool};
 use std::sync::Arc;
-use tracing::{debug, error, info};
+use tracing::{info, warn};
 
 #[derive(Clone)]
 pub struct LinkedInPostServer {
-    tools: Arc<LinkedInTools>,
+    client: Arc<LinkedInClient>,
     peer: Option<Peer<RoleServer>>,
 }
 
 impl LinkedInPostServer {
     pub fn new(client: LinkedInClient) -> Self {
         Self {
-            tools: Arc::new(LinkedInTools::new(client)),
+            client: Arc::new(client),
             peer: None,
+        }
+    }
+}
+
+#[tool(tool_box)]
+impl LinkedInPostServer {
+    #[tool(description = "Create a LinkedIn post. Optionally schedule it for a future time.")]
+    async fn create_post(
+        &self,
+        #[tool(aggr)] req: LinkedInPostRequest,
+    ) -> String {  // Simple string return
+        info!("Tool 'create_post' called with content: {}", req.content);
+        
+        // Parse schedule time if provided
+        let schedule_time = match req.schedule_time {
+            Some(time_str) => match time_str.parse::<chrono::DateTime<chrono::Utc>>() {
+                Ok(time) => {
+                    info!("Post scheduled for: {}", time);
+                    Some(time)
+                },
+                Err(e) => {
+                    warn!("Invalid schedule time format: {}", e);
+                    return serde_json::json!({
+                        "success": false,
+                        "post_id": null,
+                        "message": "Invalid schedule time format. Use ISO 8601 format."
+                    }).to_string();
+                }
+            },
+            None => None,
+        };
+        
+        // Create the LinkedIn post
+        match self.client.create_post(req.content, schedule_time).await {
+            Ok(post_id) => {
+                info!("Successfully created LinkedIn post with ID: {}", post_id);
+                serde_json::json!({
+                    "success": true,
+                    "post_id": post_id,
+                    "message": "Post created successfully"
+                }).to_string()
+            }
+            Err(e) => {
+                warn!("Failed to create LinkedIn post: {}", e);
+                serde_json::json!({
+                    "success": false,
+                    "post_id": null,
+                    "message": format!("Failed to create post: {}", e)
+                }).to_string()
+            }
         }
     }
 }
@@ -31,93 +75,15 @@ impl LinkedInPostServer {
 impl ServerHandler for LinkedInPostServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
-            name: "LinkedInPostServer".into(),
-            version: "1.0.0".into(),
+            // name: "LinkedIn Post Server".into(),
+            // version: "1.0.0".into(),
+            protocol_version: ProtocolVersion::V_2024_11_05,
             instructions: Some("A server for creating LinkedIn posts".into()),
+            capabilities: ServerCapabilities::builder().enable_tools().build(),
             ..Default::default()
         }
     }
-
-    async fn handle_request(
-        &self,
-        request: ClientRequest,
-        _context: RequestContext<RoleServer>,
-    ) -> Result<ServerResult, McpError> {
-        debug!("Received MCP request: {:?}", request);
-
-        match request {
-            ClientRequest::InitializeRequest(req) => {
-                info!("Client connected: {:?}", req.params.client_info);
-
-                // Return server info and capabilities
-                Ok(ServerResult::InitializeResult(InitializeResult {
-                    server_info: self.get_info(),
-                    capabilities: ServerCapabilities::default(),
-                }))
-            }
-            ClientRequest::ListToolsRequest(_) => {
-                info!("Client requested tool list");
-
-                // Use tool_box to handle tool listing
-                tool_box!(@list_tools self)
-            }
-            ClientRequest::CallToolRequest(req) => {
-                info!("Client wants to call tool: {}", req.params.name);
-
-                match req.params.name.as_str() {
-                    "create_post" => {
-                        info!(
-                            "Calling create_post tool with params: {:?}",
-                            req.params.parameters
-                        );
-                        let result = self.tools.create_post(req.params.parameters).await;
-
-                        match result {
-                            Ok(response) => {
-                                info!("Successfully created post, returning response");
-                                Ok(ServerResult::CallToolResult(CallToolResult {
-                                    contents: Contents::from_serializable(&response)?,
-                                }))
-                            }
-                            Err(e) => {
-                                error!("Error creating post: {}", e.0);
-                                Ok(ServerResult::CallToolResult(CallToolResult {
-                                    contents: Contents::Error(ErrorContents {
-                                        code: "LINKEDIN_ERROR".to_string(),
-                                        message: e.0,
-                                        data: None,
-                                    }),
-                                }))
-                            }
-                        }
-                    }
-                    _ => {
-                        error!("Method not found: {}", req.params.name);
-                        Err(McpError::method_not_found(&req.params.name))
-                    }
-                }
-            }
-            _ => {
-                // Handle other requests or return errors
-                error!("Unsupported request type");
-                Err(McpError::method_not_found("Unsupported request type"))
-            }
-        }
-    }
-
-    async fn handle_notification(&self, notification: ClientNotification) -> Result<(), McpError> {
-        match notification {
-            ClientNotification::CancelledNotification(note) => {
-                info!(
-                    "Client sent cancel for request ID: {:?}",
-                    note.params.request_id
-                );
-                Ok(())
-            }
-            _ => Ok(()),
-        }
-    }
-
+    
     fn get_peer(&self) -> Option<Peer<RoleServer>> {
         self.peer.clone()
     }
